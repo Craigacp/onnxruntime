@@ -187,19 +187,20 @@ public class TensorInfo implements ValueInfo {
      * @throws ONNXException If the supplied Object isn't an array, or is an invalid type.
      */
     public static TensorInfo constructFromJavaArray(Object obj) throws ONNXException {
-        Class<?> objClass = obj.getClass();
-        if (!objClass.isArray() && !objClass.isPrimitive() && !objClass.equals(String.class)) {
-            throw new ONNXException("Cannot convert " + objClass + " to a ONNXTensor.");
-        }
         // Figure out base type and number of dimensions.
         int dimensions = 0;
-        while (objClass.isArray()) {
-            objClass = objClass.getComponentType();
+        Object subArray = obj;
+        while (subArray.getClass().isArray()) {
             dimensions++;
+            subArray = Array.get(subArray, 0);
         }
-        if (!objClass.isPrimitive() && !objClass.equals(String.class)) {
+        Class<?> objClass = subArray.getClass();
+        if (!objClass.isPrimitive() && !objClass.equals(String.class) && !objClass.equals(Double.class)
+            && !objClass.equals(Float.class) && !objClass.equals(Long.class)
+            && !objClass.equals(Integer.class) && !objClass.equals(Short.class) && !objClass.equals(Boolean.class)) {
             throw new ONNXException("Cannot create an ONNXTensor from a base type of " + objClass);
-        } else if (dimensions > MAX_DIMENSIONS) {
+        } else
+            if (dimensions > MAX_DIMENSIONS) {
             throw new ONNXException("Cannot create an ONNXTensor with more than " + MAX_DIMENSIONS + " dimensions. Found " + dimensions + " dimensions.");
         } else if ((dimensions > 1) && objClass.equals(String.class)) {
             throw new ONNXException("Cannot create a multidimensional ONNXTensor from Strings. Found " + dimensions + " dimensions.");
