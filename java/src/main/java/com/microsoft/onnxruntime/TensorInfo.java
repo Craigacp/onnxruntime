@@ -199,8 +199,7 @@ public class TensorInfo implements ValueInfo {
             && !objClass.equals(Float.class) && !objClass.equals(Long.class)
             && !objClass.equals(Integer.class) && !objClass.equals(Short.class) && !objClass.equals(Boolean.class)) {
             throw new ONNXException("Cannot create an ONNXTensor from a base type of " + objClass);
-        } else
-            if (dimensions > MAX_DIMENSIONS) {
+        } else if (dimensions > MAX_DIMENSIONS) {
             throw new ONNXException("Cannot create an ONNXTensor with more than " + MAX_DIMENSIONS + " dimensions. Found " + dimensions + " dimensions.");
         } else if ((dimensions > 1) && objClass.equals(String.class)) {
             throw new ONNXException("Cannot create a multidimensional ONNXTensor from Strings. Found " + dimensions + " dimensions.");
