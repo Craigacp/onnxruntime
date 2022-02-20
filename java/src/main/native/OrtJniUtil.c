@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -84,6 +84,25 @@ OrtSparseFormat convertToOrtSparseFormat(jint format) {
         return ORT_SPARSE_BLOCK_SPARSE;
       default:
         return ORT_SPARSE_UNDEFINED;
+    }
+}
+
+/**
+ * Must be kept in sync with OrtSparseFormat and OnnxSparseTensor.SparseTensorType
+ * @param format The enum.
+ * @return The Java int.
+ */
+jint convertFromOrtSparseFormat(OrtSparseFormat format) {
+    switch (format) {
+      case ORT_SPARSE_COO:
+        return 1;
+      case ORT_SPARSE_CSRC:
+        return 2;
+      case ORT_SPARSE_BLOCK_SPARSE:
+        return 4;
+      case ORT_SPARSE_UNDEFINED:
+      default:
+        return 0;
     }
 }
 
@@ -219,7 +238,8 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * inf
     checkOrtStatus(jniEnv,api,api->GetOnnxTypeFromTypeInfo(info,&type));
 
     switch (type) {
-        case ONNX_TYPE_TENSOR: {
+        case ONNX_TYPE_TENSOR:
+        case ONNX_TYPE_SPARSETENSOR: {
             const OrtTensorTypeAndShapeInfo* tensorInfo;
             checkOrtStatus(jniEnv,api,api->CastTypeInfoToTensorInfo(info,&tensorInfo));
             return convertToTensorInfo(jniEnv, api, (const OrtTensorTypeAndShapeInfo *) tensorInfo);
@@ -236,7 +256,6 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * inf
         }
         case ONNX_TYPE_UNKNOWN:
         case ONNX_TYPE_OPAQUE:
-        case ONNX_TYPE_SPARSETENSOR:
         default: {
             throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"Invalid ONNXType found.");
             return NULL;
@@ -794,6 +813,35 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
     return javaTensor;
 }
 
+jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
+    // Extract the type information
+    OrtTensorTypeAndShapeInfo* info;
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+
+    // Construct the TensorInfo object
+    jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
+
+    // Release the info object
+    api->ReleaseTensorTypeAndShapeInfo(info);
+
+    // Lookup the sparse tensor type enum
+    OrtSparseFormat format;
+    checkOrtStatus(jniEnv,api,api->GetSparseTensorFormat(tensor, &format));
+    jint sparseTensorInt = convertFromOrtSparseFormat(format);
+    char *sparseTensorTypeClassName = "ai/onnxruntime/OnnxSparseTensor$SparseTensorType";
+    jclass clazz = (*jniEnv)->FindClass(jniEnv, sparseTensorTypeClassName);
+    jmethodID sparseTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv, clazz, "mapFromInt", "(I)Lai/onnxruntime/OnnxSparseTensor$SparseTensorType;");
+    jobject sparseTensorType = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,sparseTensorTypeMapFromInt,sparseTensorInt);
+
+    // Construct the ONNXTensor object
+    char *tensorClassName = "ai/onnxruntime/OnnxSparseTensor";
+    clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
+    jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/OnnxSparseTensor$SparseTensorType;Lai/onnxruntime/TensorInfo;)V");
+    jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorType, tensorInfo);
+
+    return javaSparseTensor;
+}
+
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {
     // Setup
     // Get the ONNXTensorType enum static method
@@ -996,10 +1044,12 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
         case ONNX_TYPE_MAP: {
             return createJavaMapFromONNX(jniEnv, api, allocator, onnxValue);
         }
+        case ONNX_TYPE_SPARSETENSOR: {
+            return createJavaSparseTensorFromONNX(jniEnv, api, allocator, onnxValue);
+        }
         case ONNX_TYPE_UNKNOWN:
         case ONNX_TYPE_OPAQUE:
-        case ONNX_TYPE_OPTIONAL:
-        case ONNX_TYPE_SPARSETENSOR: {
+        case ONNX_TYPE_OPTIONAL: {
             throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_SPARSETENSOR.");
             break;
         }

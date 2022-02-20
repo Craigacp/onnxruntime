@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -24,6 +24,8 @@ GraphOptimizationLevel convertOptimizationLevel(jint level);
 ExecutionMode convertExecutionMode(jint mode);
 
 OrtSparseFormat convertToOrtSparseFormat(jint format);
+
+jint convertFromOrtSparseFormat(OrtSparseFormat format);
 
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 
@@ -64,6 +66,8 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
 jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
 
 jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
+
+jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
 
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence);
 
