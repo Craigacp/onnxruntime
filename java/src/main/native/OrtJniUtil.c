@@ -729,12 +729,14 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
   code = checkOrtStatus(jniEnv, api, api->GetStringTensorContent(tensor, characterBuffer, totalStringLength, offsets, length));
   if (code == ORT_OK) {
     // Get the final offset, write to the end of the array.
-    code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, offsets+length));
+    code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &offsets[length]));
     if (code == ORT_OK) {
       size_t bufferSize = 0;
       for (size_t i = 0; i < length; i++) {
         size_t curSize = (offsets[i+1] - offsets[i]) + 1;
-        if (curSize > bufferSize) {
+        // The check on tempBuffer being null is to placate the static analysis as bufferSize is init to zero
+        // and offsets is unsigned, so curSize is always >= 1, and thus greater than bufferSize when tempBuffer is NULL.
+        if ((curSize > bufferSize) || (tempBuffer == NULL)) {
           if (tempBuffer != NULL) {
             free((void*)tempBuffer);
           }
