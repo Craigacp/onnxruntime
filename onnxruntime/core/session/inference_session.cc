@@ -381,6 +381,19 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
   TraceSessionOptions(session_options, false, *session_logger_);
 
+  // Pin nodes
+  if (!session_options_.cpu_pinned_nodes.empty()) {
+    GraphNodes& nodes = model_->MainGraph().Nodes();
+    for (const auto& fst : session_options_.cpu_pinned_nodes) {
+      for (auto& node : nodes) {
+        if (fst == node.Name()) {
+          // pin node to EP
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      }
+    }
+  }
+
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));

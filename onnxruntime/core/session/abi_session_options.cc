@@ -398,3 +398,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtS
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsPinNodesToCPU, _Inout_ OrtSessionOptions* options,
+                    _In_reads_(num_pinned_nodes) const char* const* pinned_node_names,
+                    _In_ size_t num_pinned_nodes) {
+  API_IMPL_BEGIN
+  for (size_t i = 0; i < num_pinned_nodes; i++) {
+    options->value.cpu_pinned_nodes.emplace_back(pinned_node_names[i]);
+  }
+  return nullptr;
+  API_IMPL_END
+}

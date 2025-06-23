@@ -5902,6 +5902,10 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
                   _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+
+  ORT_API2_STATUS(SessionOptionsPinNodesToCPU,  _Inout_ OrtSessionOptions* options,
+                  _In_reads_(num_pinned_nodes) const char* const* pinned_node_names,
+                  _In_ size_t num_pinned_nodes);
 };
 
 /*

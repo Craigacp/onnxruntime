@@ -666,4 +666,8 @@ ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArr
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,
                     _Outptr_result_maybenull_ const OrtGraph** parent_graph);
 
+
+ORT_API_STATUS_IMPL(SessionOptionsPinNodesToCPU,  _Inout_ OrtSessionOptions* options,
+                _In_reads_(num_pinned_nodes) const char* const* pinned_node_names,
+                _In_ size_t num_pinned_nodes);
 }  // namespace OrtApis

@@ -994,6 +994,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Pins the named nodes to the CPU execution provider.
+     * @param nodeNames The nodes to pin.
+     * @throws OrtException If the pinning failed.
+     */
+    public void pinNodesToCPU(List<String> nodeNames) throws OrtException {
+      checkClosed();
+      pinNodesToCPU(OnnxRuntime.ortApiHandle, nativeHandle, nodeNames.toArray(new String[0]));
+    }
+
+
+    /**
      * Adds in the supplied externally loaded initializers.
      *
      * <p>Note the initializers are copied into the session once it has been created, and the native
@@ -1420,6 +1431,8 @@ public class OrtSession implements AutoCloseable {
     private native void addConfigEntry(
         long apiHandle, long nativeHandle, String configKey, String configValue)
         throws OrtException;
+
+    private native void pinNodesToCPU(long apiHandle, long nativeHandle, String[] nodeNames) throws OrtException;
 
     /*
      * To use additional providers, you must build ORT with the extra providers enabled. Then call

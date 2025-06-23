@@ -215,6 +215,8 @@ struct SessionOptions {
 
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
+  std::vector<std::string> cpu_pinned_nodes;
+
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val);
 

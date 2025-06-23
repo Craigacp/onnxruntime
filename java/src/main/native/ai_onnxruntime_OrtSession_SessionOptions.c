@@ -756,3 +756,34 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   free((void*)jkeyArray);
   free((void*)jvalueArray);
 }
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    pinNodesToCPU
+ * Signature: (JJ[Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_pinNodesToCPU
+        (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jobjectArray nodeNameArr) {
+    (void)jobj;
+
+    const OrtApi* api = (const OrtApi*)apiHandle;
+    OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
+    jsize nodeCount = (*jniEnv)->GetArrayLength(jniEnv, nodeNameArr);
+
+    const char** nodeArray = (const char**)allocarray(nodeCount, sizeof(const char*));
+    jstring* jnodeArray = (jstring*)allocarray(nodeCount, sizeof(jstring));
+
+    for (jsize i = 0; i < nodeCount; i++) {
+        jnodeArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, nodeNameArr, i));
+        nodeArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jnodeArray[i], NULL);
+    }
+
+    checkOrtStatus(jniEnv, api, api->SessionOptionsPinNodesToCPU(options, nodeArray, nodeCount));
+
+    for (jsize i = 0; i < nodeCount; i++) {
+        (*jniEnv)->ReleaseStringUTFChars(jniEnv, jnodeArray[i], nodeArray[i]);
+    }
+    free((void*)nodeArray);
+    free((void*)jnodeArray);
+}
+
