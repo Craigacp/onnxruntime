@@ -381,19 +381,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
   TraceSessionOptions(session_options, false, *session_logger_);
 
-  // Pin nodes
-  if (!session_options_.cpu_pinned_nodes.empty()) {
-    GraphNodes& nodes = model_->MainGraph().Nodes();
-    for (const auto& fst : session_options_.cpu_pinned_nodes) {
-      for (auto& node : nodes) {
-        if (fst == node.Name()) {
-          // pin node to EP
-          node.SetExecutionProviderType(kCpuExecutionProvider);
-        }
-      }
-    }
-  }
-
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_THROW_IF_ERROR(graph_transformer_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps));
@@ -2066,6 +2053,20 @@ common::Status InferenceSession::Initialize() {
 
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
+
+    // Pin nodes to CPU if required
+    if (!session_options_.cpu_pinned_nodes.empty()) {
+      GraphNodes& nodes = model_->MainGraph().Nodes();
+      for (const auto& fst : session_options_.cpu_pinned_nodes) {
+        for (auto& node : nodes) {
+          if (fst == node.Name()) {
+            // pin node to CPU
+            //node.SetExecutionProviderType(kCpuExecutionProvider);
+            LOGS(*session_logger_, WARNING) << "Found a node " << fst;
+          }
+        }
+      }
+    }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {

@@ -998,7 +998,7 @@ public class OrtSession implements AutoCloseable {
      * @param nodeNames The nodes to pin.
      * @throws OrtException If the pinning failed.
      */
-    public void pinNodesToCPU(List<String> nodeNames) throws OrtException {
+    public void pinNodesToCPU(Set<String> nodeNames) throws OrtException {
       checkClosed();
       pinNodesToCPU(OnnxRuntime.ortApiHandle, nativeHandle, nodeNames.toArray(new String[0]));
     }
