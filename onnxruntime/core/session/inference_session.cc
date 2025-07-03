@@ -2061,8 +2061,8 @@ common::Status InferenceSession::Initialize() {
         for (auto& node : nodes) {
           if (fst == node.Name()) {
             // pin node to CPU
-            //node.SetExecutionProviderType(kCpuExecutionProvider);
-            LOGS(*session_logger_, WARNING) << "Found a node " << fst;
+            node.SetExecutionProviderType(kCpuExecutionProvider);
+            LOGS(*session_logger_, INFO) << "Pinning " << fst << " to CPU execution provider.";
           }
         }
       }
