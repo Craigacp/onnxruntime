@@ -2057,12 +2057,27 @@ common::Status InferenceSession::Initialize() {
     // Pin nodes to CPU if required
     if (!session_options_.cpu_pinned_nodes.empty()) {
       GraphNodes& nodes = model_->MainGraph().Nodes();
-      for (const auto& fst : session_options_.cpu_pinned_nodes) {
-        for (auto& node : nodes) {
+      for (auto& node : nodes) {
+        for (const auto& fst : session_options_.cpu_pinned_nodes) {
           if (fst == node.Name()) {
             // pin node to CPU
             node.SetExecutionProviderType(kCpuExecutionProvider);
             LOGS(*session_logger_, INFO) << "Pinning " << fst << " to CPU execution provider.";
+          }
+        }
+        if (node.ContainsSubgraph()) {
+          LOGS(*session_logger_, INFO) << node.Name() << node.OpType();
+          for (auto& subgraph : node.GetSubgraphs()) {
+            GraphNodes subgraphNodes = subgraph.get()->Nodes();
+            for (auto& innerNode : subgraphNodes) {
+              for (const auto& fst : session_options_.cpu_pinned_nodes) {
+                if (fst == innerNode.Name()) {
+                  // pin node to CPU
+                  innerNode.SetExecutionProviderType(kCpuExecutionProvider);
+                  LOGS(*session_logger_, INFO) << "Pinning " << fst << " from subgraph of node " << node.Name() << "to CPU execution provider.";
+                }
+              }
+            }
           }
         }
       }
