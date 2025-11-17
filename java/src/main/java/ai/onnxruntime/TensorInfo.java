@@ -423,8 +423,8 @@ public class TensorInfo implements ValueInfo {
    * @throws OrtException If the supplied buffer doesn't match the shape.
    */
   public static TensorInfo constructFromBuffer(Buffer buffer, long[] shape, OnnxJavaType type)
-          throws OrtException {
-      return constructFromMemory(buffer.remaining(), shape, type);
+      throws OrtException {
+    return constructFromMemory(buffer.remaining(), shape, type);
   }
 
   /**
@@ -436,9 +436,9 @@ public class TensorInfo implements ValueInfo {
    * @return A TensorInfo for a tensor.
    * @throws OrtException If the supplied buffer doesn't match the shape.
    */
-  public static TensorInfo constructFromSegment(MemorySegment buffer, long[] shape, OnnxJavaType type)
-      throws OrtException {
-      return constructFromMemory(buffer.byteSize(), shape, type);
+  public static TensorInfo constructFromSegment(
+      MemorySegment buffer, long[] shape, OnnxJavaType type) throws OrtException {
+    return constructFromMemory(buffer.byteSize(), shape, type);
   }
 
   /**

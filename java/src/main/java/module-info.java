@@ -3,13 +3,11 @@
  * Licensed under the MIT License.
  */
 
-/**
- * ONNX Runtime Java API.
- */
+/** ONNX Runtime Java API. */
 module ai.onnxruntime {
-    requires java.logging;
+  requires java.logging;
 
-    exports ai.onnxruntime;
-    exports ai.onnxruntime.providers;
-    exports ai.onnxruntime.platform;
+  exports ai.onnxruntime;
+  exports ai.onnxruntime.providers;
+  exports ai.onnxruntime.platform;
 }

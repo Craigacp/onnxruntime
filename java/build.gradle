@@ -34,13 +34,13 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
-    }
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 22
+	options.release = 22
 }
 
 // This jar tasks serves as a CMAKE signaling
@@ -150,7 +150,7 @@ if (cmakeBuildDir != null) {
 dependencies {
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.1'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.14.1'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
 	testImplementation 'com.google.protobuf:protobuf-java:3.25.5'
 }
 
