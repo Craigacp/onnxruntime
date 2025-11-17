@@ -1,10 +1,12 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.platform.Fp16Conversions;
+
+import java.lang.foreign.MemorySegment;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -24,6 +26,12 @@ public class OnnxTensor extends OnnxTensorLike {
   private static final Logger logger = Logger.getLogger(OnnxTensor.class.getName());
 
   /**
+   * This reference is held for OnnxTensors backed by a java.lang.foreign.MemorySegment to ensure the segment does
+   * not go out of scope while the OnnxTensor exists.
+   */
+  private final MemorySegment segment;
+
+  /**
    * This reference is held for OnnxTensors backed by a java.nio.Buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
    */
@@ -36,13 +44,22 @@ public class OnnxTensor extends OnnxTensorLike {
   private final boolean ownsBuffer;
 
   OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
-    this(nativeHandle, allocatorHandle, info, null, false);
+    this(nativeHandle, allocatorHandle, info, (Buffer) null, false);
   }
 
   OnnxTensor(
-      long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean ownsBuffer) {
+          long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer, boolean ownsBuffer) {
+      super(nativeHandle, allocatorHandle, info);
+      this.buffer = buffer;
+      this.segment = null;
+      this.ownsBuffer = ownsBuffer;
+  }
+
+  OnnxTensor(
+      long nativeHandle, long allocatorHandle, TensorInfo info, MemorySegment segment, boolean ownsBuffer) {
     super(nativeHandle, allocatorHandle, info);
-    this.buffer = buffer;
+    this.buffer = null;
+    this.segment = segment;
     this.ownsBuffer = ownsBuffer;
   }
 
@@ -77,7 +94,26 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A reference to the buffer.
    */
   public Optional<Buffer> getBufferRef() {
-    return Optional.ofNullable(duplicate(buffer));
+      if (buffer == null) {
+          return Optional.empty();
+      } else {
+          return Optional.of(duplicate(buffer));
+      }
+  }
+
+  /**
+   * Returns a reference to the segment which backs this {@code OnnxTensor}. If the tensor is not
+   * backed by a segment (i.e., it is backed by a buffer or memory allocated by ORT) this method returns an empty
+   * {@link Optional}.
+   *
+   * <p>Changes to the segment elements will be reflected in the native {@code OrtValue}, this can be
+   * used to repeatedly update a single tensor for multiple different inferences without allocating
+   * new tensors, though the inputs <b>must</b> remain the same size and shape.
+   *
+   * @return A reference to the segment.
+   */
+  public Optional<MemorySegment> getSegment() {
+    return Optional.ofNullable(segment);
   }
 
   /**
@@ -703,6 +739,21 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
+   * Create an OnnxTensor backed by a MemorySegment.
+   *
+   * @param env The current OrtEnvironment.
+   * @param data The tensor data.
+   * @param shape The shape of tensor.
+   * @param type The type to use for the byte buffer elements.
+   * @return An OnnxTensor of the required shape.
+   * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
+   */
+  public static OnnxTensor createTensor(
+          OrtEnvironment env, MemorySegment data, long[] shape, OnnxJavaType type) throws OrtException {
+      return createTensor(env, env.defaultAllocator, data, shape, type);
+  }
+
+  /**
    * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
    *
    * <p>If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
@@ -718,6 +769,27 @@ public class OnnxTensor extends OnnxTensorLike {
   public static OnnxTensor createTensor(
       OrtEnvironment env, ByteBuffer data, long[] shape, OnnxJavaType type) throws OrtException {
     return createTensor(env, env.defaultAllocator, data, shape, type);
+  }
+
+  /**
+   * Create an OnnxTensor backed by a MemorySegment.
+   *
+   * @param env The current OrtEnvironment.
+   * @param allocator The allocator to use.
+   * @param data The tensor data.
+   * @param shape The shape of tensor.
+   * @param type The type to use for the byte buffer elements.
+   * @return An OnnxTensor of the required shape.
+   * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
+   */
+  static OnnxTensor createTensor(
+          OrtEnvironment env, OrtAllocator allocator, MemorySegment data, long[] shape, OnnxJavaType type)
+          throws OrtException {
+      if (!allocator.isClosed()) {
+          return createTensor(type, allocator, data, shape);
+      } else {
+          throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
+      }
   }
 
   /**
@@ -908,22 +980,49 @@ public class OnnxTensor extends OnnxTensorLike {
    * @throws OrtException If the create call failed.
    */
   private static OnnxTensor createTensor(
-      OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
-    OrtUtil.BufferTuple tuple = OrtUtil.prepareBuffer(data, type);
-    TensorInfo info = TensorInfo.constructFromBuffer(tuple.data, shape, type);
+          OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
+      OrtUtil.BufferTuple tuple = OrtUtil.prepareBuffer(data, type);
+      TensorInfo info = TensorInfo.constructFromBuffer(tuple.data, shape, type);
+      return new OnnxTensor(
+              createTensorFromBuffer(
+                      OnnxRuntime.ortApiHandle,
+                      allocator.handle,
+                      tuple.data,
+                      tuple.pos,
+                      tuple.byteSize,
+                      shape,
+                      info.onnxType.value),
+              allocator.handle,
+              info,
+              tuple.data,
+              tuple.isCopy);
+  }
+
+  /**
+   * Creates a tensor wrapped around a MemorySegment.
+   *
+   * @param type The buffer type.
+   * @param allocator The OrtAllocator.
+   * @param data The data.
+   * @param shape The tensor shape.
+   * @return An OnnxTensor instance.
+   * @throws OrtException If the create call failed.
+   */
+  private static OnnxTensor createTensor(
+      OnnxJavaType type, OrtAllocator allocator, MemorySegment data, long[] shape) throws OrtException {
+    TensorInfo info = TensorInfo.constructFromSegment(data, shape, type);
     return new OnnxTensor(
-        createTensorFromBuffer(
+        createTensorFromSegment(
             OnnxRuntime.ortApiHandle,
             allocator.handle,
-            tuple.data,
-            tuple.pos,
-            tuple.byteSize,
+            data.address(),
+            data.byteSize(),
             shape,
             info.onnxType.value),
         allocator.handle,
         info,
-        tuple.data,
-        tuple.isCopy);
+        data,
+        false);
   }
 
   private static native long createTensorFromBuffer(
@@ -931,6 +1030,15 @@ public class OnnxTensor extends OnnxTensorLike {
       long allocatorHandle,
       Buffer data,
       int bufferPos,
+      long bufferSize,
+      long[] shape,
+      int onnxType)
+      throws OrtException;
+
+  private static native long createTensorFromSegment(
+      long apiHandle,
+      long allocatorHandle,
+      long dataPtr,
       long bufferSize,
       long[] shape,
       int onnxType)

@@ -2,8 +2,8 @@ plugins {
 	id 'java-library'
 	id 'maven-publish'
 	id 'signing'
-	id 'jacoco'
-	id "com.diffplug.spotless" version "7.2.1"
+	//id 'jacoco'
+	id "com.diffplug.spotless" version "8.0.0"
 }
 
 allprojects {
@@ -34,8 +34,13 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 
 
 java {
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 22
 }
 
 // This jar tasks serves as a CMAKE signaling
@@ -81,23 +86,6 @@ spotless {
 compileJava {
 	dependsOn spotlessJava
 	options.compilerArgs += ["-h", "${layout.buildDirectory.get().toString()}/headers/"]
-	if (!JavaVersion.current().isJava8()) {
-		// Ensures only methods present in Java 8 are used
-		options.compilerArgs.addAll(['--release', '8'])
-		// Gradle versions before 6.6 require that these flags are unset when using "-release"
-		java.sourceCompatibility = null
-		java.targetCompatibility = null
-	}
-}
-
-compileTestJava {
-	if (!JavaVersion.current().isJava8()) {
-		// Ensures only methods present in Java 8 are used
-		options.compilerArgs.addAll(['--release', '8'])
-		// Gradle versions before 6.6 require that these flags are unset when using "-release"
-		java.sourceCompatibility = null
-		java.targetCompatibility = null
-	}
 }
 
 sourceSets.main.java {
@@ -128,8 +116,7 @@ if (cmakeBuildDir != null) {
 	// Overwrite jar location
 	tasks.register('allJar', Jar) {
 		manifest {
-			attributes('Automatic-Module-Name': project.group,
-					'Implementation-Title': 'onnxruntime',
+			attributes('Implementation-Title': 'onnxruntime',
 					'Implementation-Version': project.version)
 		}
 		into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -161,8 +148,9 @@ if (cmakeBuildDir != null) {
 }
 
 dependencies {
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.1'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.14.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
 	testImplementation 'com.google.protobuf:protobuf-java:3.25.5'
 }
 
@@ -216,6 +204,7 @@ test {
 	}
 }
 
+/*
 jacocoTestReport {
 	reports {
 		xml.required = true
@@ -223,6 +212,7 @@ jacocoTestReport {
 		html.outputLocation = layout.buildDirectory.dir("jacocoHtml")
 	}
 }
+ */
 
 publishing {
 	publications {
