@@ -749,6 +749,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param shape The shape of tensor.
    * @param type The type to use for the byte buffer elements.
    * @return An OnnxTensor of the required shape.
+   * @throws IllegalArgumentException If the MemorySegment is not on the native heap.
    * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
    */
   public static OnnxTensor createTensor(
@@ -783,6 +784,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param shape The shape of tensor.
    * @param type The type to use for the byte buffer elements.
    * @return An OnnxTensor of the required shape.
+   * @throws IllegalArgumentException If the MemorySegment is not on the native heap.
    * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
    */
   static OnnxTensor createTensor(
@@ -1013,11 +1015,15 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param data The data.
    * @param shape The tensor shape.
    * @return An OnnxTensor instance.
+   * @throws IllegalArgumentException If the MemorySegment is not on the native heap.
    * @throws OrtException If the create call failed.
    */
   private static OnnxTensor createTensor(
       OnnxJavaType type, OrtAllocator allocator, MemorySegment data, long[] shape)
       throws OrtException {
+    if (!data.isNative()) {
+      throw new IllegalArgumentException("MemorySegment must be native to create a tensor.");
+    }
     TensorInfo info = TensorInfo.constructFromSegment(data, shape, type);
     return new OnnxTensor(
         createTensorFromSegment(
