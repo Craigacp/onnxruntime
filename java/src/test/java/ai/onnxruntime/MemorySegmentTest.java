@@ -8,12 +8,88 @@ package ai.onnxruntime;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.nio.FloatBuffer;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /** Tests for interop with Java 22's MemorySegments. */
 public class MemorySegmentTest {
+
+  @Test
+  public void testSegments() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    // Construct a big segment.
+    try (Arena arena = Arena.ofConfined()) {
+      // e.g., a 256k vocab with 4096 embedding dimensions
+      long[] shape = new long[] {256 * 1024, 4 * 1024};
+      MemorySegment segment = arena.allocate(4L * OrtUtil.elementCount(shape));
+      // Fill segment with appropriate values
+      for (int i = 0; i < 256 * 1024; i++) {
+        float floati = (float) i;
+        for (int j = 0; j < 4096; j++) {
+          segment.set(ValueLayout.JAVA_FLOAT, 4L * i * 4096L + 4L * j, floati);
+        }
+      }
+      OnnxTensor bigTensor = OnnxTensor.createTensor(env, segment, shape, OnnxJavaType.FLOAT);
+
+      try {
+        FloatBuffer fb = bigTensor.getFloatBuffer();
+        Assertions.fail("Should have thrown an exception");
+      } catch (OrtException e) {
+        Assertions.assertTrue(
+            e.getMessage().contains("Cannot construct a java.nio.Buffer of this size."));
+      }
+
+      try {
+        float[][] arr = (float[][]) bigTensor.getValue();
+        Assertions.fail("Should have thrown an exception");
+      } catch (OrtException e) {
+        Assertions.assertTrue(
+            e.getMessage().contains("This tensor is not representable in Java, it's too big"));
+      }
+
+      MemorySegment ref = bigTensor.getSegmentRef().get();
+      Assertions.assertSame(segment, ref);
+
+      MemorySegment other = bigTensor.getSegment();
+      Assertions.assertEquals(segment, other);
+    }
+  }
+
+  @Test
+  public void testSmallSegment() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    // Construct a small segment.
+    try (Arena arena = Arena.ofConfined()) {
+      long[] shape = new long[] {5, 4};
+      MemorySegment segment = arena.allocate(4L * OrtUtil.elementCount(shape));
+      // Fill segment with appropriate values
+      for (int i = 0; i < 5; i++) {
+        float floati = (float) i;
+        for (int j = 0; j < 4; j++) {
+          segment.set(ValueLayout.JAVA_FLOAT, 4L * i * 4L + 4L * j, floati);
+        }
+      }
+      OnnxTensor smallTensor = OnnxTensor.createTensor(env, segment, shape, OnnxJavaType.FLOAT);
+
+      FloatBuffer fb = smallTensor.getFloatBuffer();
+
+      float[][] arr = (float[][]) smallTensor.getValue();
+
+      float[] fbArr = new float[fb.remaining()];
+      fb.get(fbArr);
+      float[][] reshaped = (float[][]) OrtUtil.reshape(fbArr, shape);
+      Assertions.assertArrayEquals(arr, reshaped);
+
+      MemorySegment ref = smallTensor.getSegmentRef().get();
+      Assertions.assertSame(segment, ref);
+
+      MemorySegment other = smallTensor.getSegment();
+      Assertions.assertEquals(segment, other);
+      Assertions.assertNotSame(segment, other);
+    }
+  }
 
   @Test
   public void testModel() throws OrtException {

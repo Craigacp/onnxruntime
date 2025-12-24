@@ -115,7 +115,7 @@ public class OnnxTensor extends OnnxTensorLike {
    *
    * @return A reference to the segment.
    */
-  public Optional<MemorySegment> getSegment() {
+  public Optional<MemorySegment> getSegmentRef() {
     return Optional.ofNullable(segment);
   }
 
@@ -330,8 +330,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * the OnnxTensor.
    *
    * @return A ByteBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public ByteBuffer getByteBuffer() {
+  public ByteBuffer getByteBuffer() throws OrtException {
     checkClosed();
     if (info.type != OnnxJavaType.STRING) {
       ByteBuffer buffer = getBuffer();
@@ -349,8 +351,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * into a float (i.e. it's a float, fp16 or bf16), otherwise it returns null.
    *
    * @return A FloatBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public FloatBuffer getFloatBuffer() {
+  public FloatBuffer getFloatBuffer() throws OrtException {
     checkClosed();
     if (info.type == OnnxJavaType.FLOAT) {
       // if it's fp32 use the efficient copy.
@@ -379,8 +383,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * double, otherwise it returns null.
    *
    * @return A DoubleBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public DoubleBuffer getDoubleBuffer() {
+  public DoubleBuffer getDoubleBuffer() throws OrtException {
     checkClosed();
     if (info.type == OnnxJavaType.DOUBLE) {
       DoubleBuffer buffer = getBuffer().asDoubleBuffer();
@@ -398,8 +404,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * uint16, fp16 or bf16, otherwise it returns null.
    *
    * @return A ShortBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public ShortBuffer getShortBuffer() {
+  public ShortBuffer getShortBuffer() throws OrtException {
     checkClosed();
     if ((info.type == OnnxJavaType.INT16)
         || (info.type == OnnxJavaType.FLOAT16)
@@ -419,8 +427,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * uint32, otherwise it returns null.
    *
    * @return An IntBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public IntBuffer getIntBuffer() {
+  public IntBuffer getIntBuffer() throws OrtException {
     checkClosed();
     if (info.type == OnnxJavaType.INT32) {
       IntBuffer buffer = getBuffer().asIntBuffer();
@@ -438,8 +448,10 @@ public class OnnxTensor extends OnnxTensorLike {
    * uint64, otherwise it returns null.
    *
    * @return A LongBuffer copy of the OnnxTensor.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  public LongBuffer getLongBuffer() {
+  public LongBuffer getLongBuffer() throws OrtException {
     checkClosed();
     if (info.type == OnnxJavaType.INT64) {
       LongBuffer buffer = getBuffer().asLongBuffer();
@@ -458,9 +470,30 @@ public class OnnxTensor extends OnnxTensorLike {
    * OnnxTensor#getBuffer(long,long)}.
    *
    * @return A ByteBuffer wrapping the data.
+   * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the
+   *     native code encountered an error.
    */
-  private ByteBuffer getBuffer() {
-    return getBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
+  private ByteBuffer getBuffer() throws OrtException {
+    try {
+      return getBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
+    } catch (IllegalArgumentException e) {
+      // thrown by the byte buffer constructor if the tensor is bigger than Integer.MAX_VALUE.
+      throw new OrtException(
+          "Cannot construct a java.nio.Buffer of this size. Message: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Wraps the OrtTensor pointer in a MemorySegment.
+   *
+   * @return A MemorySegment wrapping the data.
+   * @throws OrtException If the native code encountered an error.
+   */
+  public MemorySegment getSegment() throws OrtException {
+    long[] info = getSegmentPointer(OnnxRuntime.ortApiHandle, nativeHandle);
+    MemorySegment segment = MemorySegment.ofAddress(info[0]);
+    segment = segment.reinterpret(info[1]);
+    return segment;
   }
 
   /**
@@ -470,7 +503,16 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param nativeHandle The OrtTensor pointer.
    * @return A ByteBuffer wrapping the data.
    */
-  private native ByteBuffer getBuffer(long apiHandle, long nativeHandle);
+  private native ByteBuffer getBuffer(long apiHandle, long nativeHandle) throws OrtException;
+
+  /**
+   * Gets the pointer and size in bytes for use in a MemorySegment.
+   *
+   * @param apiHandle The OrtApi pointer.
+   * @param nativeHandle The OrtTensor pointer.
+   * @return A two element array containing the address and size in bytes.
+   */
+  private native long[] getSegmentPointer(long apiHandle, long nativeHandle) throws OrtException;
 
   private native float getFloat(long apiHandle, long nativeHandle, int onnxType)
       throws OrtException;

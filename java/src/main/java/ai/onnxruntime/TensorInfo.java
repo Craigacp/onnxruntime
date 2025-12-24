@@ -333,7 +333,7 @@ public class TensorInfo implements ValueInfo {
    */
   public Object makeCarrier() throws OrtException {
     // Zero length tensors are allowed to be returned.
-    if (!validateShape() && numElements != 0) {
+    if ((!validateShape() && numElements != 0) || (numElements * type.size >= Integer.MAX_VALUE)) {
       throw new OrtException(
           "This tensor is not representable in Java, it's too big - shape = "
               + Arrays.toString(shape));

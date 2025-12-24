@@ -206,6 +206,39 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
 
 /*
  * Class:     ai_onnxruntime_OnnxTensor
+ * Method:    getSegmentPointer
+ * Signature: (JJ)[J;
+ */
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getSegmentPointer
+        (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtValue* ortValue = (OrtValue *) handle;
+    JavaTensorTypeShape typeShape;
+    OrtErrorCode code = getTensorTypeShape(jniEnv, &typeShape, api, ortValue);
+
+    if (code == ORT_OK) {
+      size_t typeSize = onnxTypeSize(typeShape.onnxTypeEnum);
+      size_t sizeBytes = typeShape.elementCount * typeSize;
+
+      uint8_t* arr = NULL;
+      code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**)&arr));
+
+      if (code == ORT_OK) {
+        jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv, 2);
+        jlong* cOutputArr = (*jniEnv)->GetLongArrayElements(jniEnv, outputArray, NULL);
+        cOutputArr[0] = (jlong) arr;
+        cOutputArr[1] = (jlong) sizeBytes;
+        // mode is 0 to copy back and release arr
+        (*jniEnv)->ReleaseLongArrayElements(jniEnv, outputArray, cOutputArr, 0);
+        return outputArray;
+      }
+    }
+    return NULL;
+}
+
+/*
+ * Class:     ai_onnxruntime_OnnxTensor
  * Method:    getFloat
  * Signature: (JI)F
  */
