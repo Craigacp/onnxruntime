@@ -42,7 +42,6 @@ const OrtMemoryInfo* ORT_API_CALL GetInfo(const OrtAllocator* allocator) {
 
 struct HolderAllocationFailure {
   const JNINativeInterface_* original_functions;
-  jclass out_of_memory_error;
   const OrtApi* api;
   jint counts[3]{};
 };
@@ -63,8 +62,13 @@ void JNICALL CountDeleteGlobalRef(JNIEnv* env, jobject object) {
 }
 
 jobject JNICALL FailNewObject(JNIEnv* env, jclass, jmethodID, ...) {
-  holder_failure->original_functions->ThrowNew(
-      env, holder_failure->out_of_memory_error, "Injected EPContext ownership holder allocation failure");
+  // Local refs are scoped to the native frame that created them, so look the class up in this nested frame.
+  const JNINativeInterface_* functions = holder_failure->original_functions;
+  jclass out_of_memory_error = functions->FindClass(env, "java/lang/OutOfMemoryError");
+  if (out_of_memory_error != nullptr) {
+    functions->ThrowNew(env, out_of_memory_error, "Injected EPContext ownership holder allocation failure");
+    functions->DeleteLocalRef(env, out_of_memory_error);
+  }
   return nullptr;
 }
 
@@ -185,13 +189,8 @@ extern "C" JNIEXPORT void JNICALL
 Java_ai_onnxruntime_EpContextDataCallbackTest_failReadCallbackHolderAllocation(
     JNIEnv* env, jclass, jlong api_handle, jlong options_handle, jobject callback, jintArray counts) {
   const auto* api = reinterpret_cast<const OrtApi*>(api_handle);
-  jclass out_of_memory_error = env->FindClass("java/lang/OutOfMemoryError");
-  if (out_of_memory_error == nullptr) {
-    return;
-  }
   jclass options_class = env->FindClass("ai/onnxruntime/OrtSession$SessionOptions");
   if (options_class == nullptr) {
-    env->DeleteLocalRef(out_of_memory_error);
     return;
   }
   jmethodID set_callback = env->GetStaticMethodID(
@@ -200,11 +199,10 @@ Java_ai_onnxruntime_EpContextDataCallbackTest_failReadCallbackHolderAllocation(
       "Lai/onnxruntime/OrtSession$SessionOptions$EpContextDataReadCallbackRegistration;");
   if (set_callback == nullptr) {
     env->DeleteLocalRef(options_class);
-    env->DeleteLocalRef(out_of_memory_error);
     return;
   }
 
-  HolderAllocationFailure failure{env->functions, out_of_memory_error, api, {}};
+  HolderAllocationFailure failure{env->functions, api, {}};
   JNINativeInterface_ injected_functions = *env->functions;
   injected_functions.NewGlobalRef = CountNewGlobalRef;
   injected_functions.DeleteGlobalRef = CountDeleteGlobalRef;
@@ -224,7 +222,6 @@ Java_ai_onnxruntime_EpContextDataCallbackTest_failReadCallbackHolderAllocation(
   env->ExceptionClear();
   env->SetIntArrayRegion(counts, 0, 3, failure.counts);
   env->DeleteLocalRef(options_class);
-  env->DeleteLocalRef(out_of_memory_error);
   if (registration != nullptr) {
     env->DeleteLocalRef(registration);
   }

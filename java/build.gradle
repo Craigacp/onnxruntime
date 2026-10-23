@@ -180,6 +180,7 @@ test {
 		forkEvery 1
 	}
 	useJUnitPlatform()
+	jvmArgs '-Xcheck:jni'
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
