@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, 2026, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -77,11 +77,11 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   // Used to ensure the byte buffer doesn't get GC'd before the model is compiled.
   private ByteBuffer buffer;
 
-  OrtModelCompilationOptions(
-      long nativeHandle,
-      SessionOptions.EpContextDataReadCallbackRegistration epContextDataReadCallbackRegistration) {
+  private OrtModelCompilationOptions(
+      long nativeHandle, SessionOptions.NativeSessionOptionsSnapshot sessionOptions) {
     this.nativeHandle = nativeHandle;
-    this.epContextDataReadCallbackRegistration = epContextDataReadCallbackRegistration;
+    this.epContextDataReadCallbackRegistration =
+        sessionOptions.transferEpContextDataReadCallbackRegistration();
   }
 
   /**
@@ -99,25 +99,13 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   public static OrtModelCompilationOptions createFromSessionOptions(
       OrtEnvironment env, OrtSession.SessionOptions sessionOptions) throws OrtException {
     try (SessionOptions.NativeSessionOptionsSnapshot snapshot = sessionOptions.createSnapshot()) {
-      long handle =
+      return new OrtModelCompilationOptions(
           createFromSessionOptions(
               OnnxRuntime.ortApiHandle,
               OnnxRuntime.ortCompileApiHandle,
               env.getNativeHandle(),
-              snapshot.getNativeHandle());
-      boolean wrapped = false;
-      try {
-        OrtModelCompilationOptions options =
-            new OrtModelCompilationOptions(
-                handle, snapshot.getEpContextDataReadCallbackRegistration());
-        snapshot.transferEpContextDataReadCallbackRegistration();
-        wrapped = true;
-        return options;
-      } finally {
-        if (!wrapped) {
-          close(OnnxRuntime.ortCompileApiHandle, handle);
-        }
-      }
+              snapshot.getNativeHandle()),
+          snapshot);
     }
   }
 

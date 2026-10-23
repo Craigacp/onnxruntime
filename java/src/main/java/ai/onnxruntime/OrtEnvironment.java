@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -210,7 +210,9 @@ public final class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
   public OrtSession createSession(String modelPath) throws OrtException {
-    return createSession(modelPath, new OrtSession.SessionOptions());
+    try (SessionOptions options = new SessionOptions()) {
+      return createSession(modelPath, options);
+    }
   }
 
   /**
@@ -238,7 +240,9 @@ public final class OrtEnvironment implements AutoCloseable {
   OrtSession createSession(String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     Objects.requireNonNull(modelPath, "model path must not be null");
-    return new OrtSession(this, modelPath, allocator, options);
+    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
+      return new OrtSession(this, modelPath, allocator, snapshot);
+    }
   }
 
   /**
@@ -264,7 +268,9 @@ public final class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
    */
   public OrtSession createSession(ByteBuffer modelBuffer) throws OrtException {
-    return createSession(modelBuffer, new OrtSession.SessionOptions());
+    try (SessionOptions options = new SessionOptions()) {
+      return createSession(modelBuffer, options);
+    }
   }
 
   /**
@@ -284,7 +290,9 @@ public final class OrtEnvironment implements AutoCloseable {
     } else if (!modelBuffer.isDirect()) {
       throw new OrtException("ByteBuffer is not direct.");
     }
-    return new OrtSession(this, modelBuffer, allocator, options);
+    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
+      return new OrtSession(this, modelBuffer, allocator, snapshot);
+    }
   }
 
   /**
@@ -309,7 +317,9 @@ public final class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
    */
   public OrtSession createSession(byte[] modelArray) throws OrtException {
-    return createSession(modelArray, new OrtSession.SessionOptions());
+    try (SessionOptions options = new SessionOptions()) {
+      return createSession(modelArray, options);
+    }
   }
 
   /**
@@ -324,7 +334,9 @@ public final class OrtEnvironment implements AutoCloseable {
   OrtSession createSession(byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     Objects.requireNonNull(modelArray, "model array must not be null");
-    return new OrtSession(this, modelArray, allocator, options);
+    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
+      return new OrtSession(this, modelArray, allocator, snapshot);
+    }
   }
 
   /**
@@ -341,8 +353,9 @@ public final class OrtEnvironment implements AutoCloseable {
   public OrtTrainingSession createTrainingSession(
       String checkpointPath, String trainPath, String evalPath, String optimizerPath)
       throws OrtException {
-    return createTrainingSession(
-        checkpointPath, trainPath, evalPath, optimizerPath, new OrtSession.SessionOptions());
+    try (SessionOptions options = new SessionOptions()) {
+      return createTrainingSession(checkpointPath, trainPath, evalPath, optimizerPath, options);
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
  * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
@@ -63,41 +63,26 @@ public class OrtSession implements AutoCloseable {
 
   private boolean closed = false;
 
-  @FunctionalInterface
-  private interface NativeSessionCreator {
-    long create(long optionsHandle) throws OrtException;
-  }
-
-  private static final class SessionCreationResult {
-    private final long nativeHandle;
-    private final SessionOptions.EpContextDataReadCallbackRegistration callbackRegistration;
-
-    private SessionCreationResult(
-        long nativeHandle,
-        SessionOptions.EpContextDataReadCallbackRegistration callbackRegistration) {
-      this.nativeHandle = nativeHandle;
-      this.callbackRegistration = callbackRegistration;
-    }
-  }
-
   /**
    * Create a session loading the model from disk.
    *
    * @param env The environment.
    * @param modelPath The path to the model.
    * @param allocator The allocator to use.
-   * @param options Session configuration options.
+   * @param options A snapshot of the session configuration options.
    * @throws OrtException If the file could not be read, or the model was corrupted etc.
    */
-  OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
+  OrtSession(
+      OrtEnvironment env,
+      String modelPath,
+      OrtAllocator allocator,
+      SessionOptions.NativeSessionOptionsSnapshot options)
       throws OrtException {
     this(
-        createSessionWithOptionsSnapshot(
-            options,
-            optionsHandle ->
-                createSession(
-                    OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, optionsHandle)),
-        allocator);
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, options.getNativeHandle()),
+        allocator,
+        options);
   }
 
   /**
@@ -106,18 +91,20 @@ public class OrtSession implements AutoCloseable {
    * @param env The environment.
    * @param modelArray The model protobuf as a byte array.
    * @param allocator The allocator to use.
-   * @param options Session configuration options.
+   * @param options A snapshot of the session configuration options.
    * @throws OrtException If the model was corrupted or some other error occurred in native code.
    */
-  OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
+  OrtSession(
+      OrtEnvironment env,
+      byte[] modelArray,
+      OrtAllocator allocator,
+      SessionOptions.NativeSessionOptionsSnapshot options)
       throws OrtException {
     this(
-        createSessionWithOptionsSnapshot(
-            options,
-            optionsHandle ->
-                createSession(
-                    OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, optionsHandle)),
-        allocator);
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
+        allocator,
+        options);
   }
 
   /**
@@ -128,46 +115,25 @@ public class OrtSession implements AutoCloseable {
    * @param env The environment.
    * @param modelBuffer The model protobuf as a byte buffer.
    * @param allocator The allocator to use.
-   * @param options Session configuration options.
+   * @param options A snapshot of the session configuration options.
    * @throws OrtException If the model was corrupted or some other error occurred in native code.
    */
   OrtSession(
-      OrtEnvironment env, ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      OrtEnvironment env,
+      ByteBuffer modelBuffer,
+      OrtAllocator allocator,
+      SessionOptions.NativeSessionOptionsSnapshot options)
       throws OrtException {
     this(
-        createSessionWithOptionsSnapshot(
-            options,
-            optionsHandle ->
-                createSession(
-                    OnnxRuntime.ortApiHandle,
-                    env.getNativeHandle(),
-                    modelBuffer,
-                    modelBuffer.position(),
-                    modelBuffer.remaining(),
-                    optionsHandle)),
-        allocator);
-  }
-
-  // Native session creation may synchronously invoke EPContext callbacks. Snapshot options and
-  // callback ownership under synchronization, then invoke native creation outside the source lock.
-  private static SessionCreationResult createSessionWithOptionsSnapshot(
-      SessionOptions options, NativeSessionCreator creator) throws OrtException {
-    try (SessionOptions.NativeSessionOptionsSnapshot snapshot = options.createSnapshot()) {
-      long nativeHandle = creator.create(snapshot.getNativeHandle());
-      boolean wrapped = false;
-      try {
-        SessionCreationResult result =
-            new SessionCreationResult(
-                nativeHandle, snapshot.getEpContextDataReadCallbackRegistration());
-        snapshot.transferEpContextDataReadCallbackRegistration();
-        wrapped = true;
-        return result;
-      } finally {
-        if (!wrapped) {
-          closeSession(OnnxRuntime.ortApiHandle, nativeHandle);
-        }
-      }
-    }
+        createSession(
+            OnnxRuntime.ortApiHandle,
+            env.getNativeHandle(),
+            modelBuffer,
+            modelBuffer.position(),
+            modelBuffer.remaining(),
+            options.getNativeHandle()),
+        allocator,
+        options);
   }
 
   /**
@@ -175,12 +141,16 @@ public class OrtSession implements AutoCloseable {
    *
    * @param nativeHandle The pointer to the native session.
    * @param allocator The allocator to use.
+   * @param options The snapshot the session was created from.
    * @throws OrtException If the model's inputs, outputs or metadata could not be read.
    */
-  private OrtSession(SessionCreationResult result, OrtAllocator allocator) throws OrtException {
-    this.nativeHandle = result.nativeHandle;
+  private OrtSession(
+      long nativeHandle,
+      OrtAllocator allocator,
+      SessionOptions.NativeSessionOptionsSnapshot options)
+      throws OrtException {
+    this.nativeHandle = nativeHandle;
     this.allocator = allocator;
-    this.epContextDataReadCallbackRegistration = result.callbackRegistration;
     boolean initialized = false;
     try {
       numInputs = getNumInputs(OnnxRuntime.ortApiHandle, nativeHandle);
@@ -197,11 +167,11 @@ public class OrtSession implements AutoCloseable {
     } finally {
       if (!initialized) {
         closeSession(OnnxRuntime.ortApiHandle, nativeHandle);
-        if (epContextDataReadCallbackRegistration != null) {
-          epContextDataReadCallbackRegistration.release();
-        }
       }
     }
+    // Must be last so a failed constructor leaves the callback reference with the snapshot.
+    this.epContextDataReadCallbackRegistration =
+        options.transferEpContextDataReadCallbackRegistration();
   }
 
   /**
@@ -759,6 +729,9 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
+    // Native session creation may synchronously invoke EPContext callbacks. Snapshot options and
+    // callback ownership under synchronization, then invoke native creation outside the source
+    // lock.
     static final class NativeSessionOptionsSnapshot implements AutoCloseable {
       private final SessionOptions owner;
       private final long nativeHandle;
@@ -783,8 +756,9 @@ public class OrtSession implements AutoCloseable {
         return callbackRegistration;
       }
 
-      void transferEpContextDataReadCallbackRegistration() {
+      EpContextDataReadCallbackRegistration transferEpContextDataReadCallbackRegistration() {
         callbackRegistrationTransferred = true;
+        return callbackRegistration;
       }
 
       @Override
