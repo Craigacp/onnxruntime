@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026 Oracle and/or its affiliates. All rights reserved.
  * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
@@ -389,24 +389,31 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setDet
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    registerCustomOpLibrary
- * Signature: (JJLjava/lang/String;)J
+ * Signature: (JJLjava/lang/String;)V
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_registerCustomOpLibrary
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_registerCustomOpLibrary
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring libraryPath) {
   (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
 
-  // Extract the string chars
+#ifdef _WIN32
+  const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, libraryPath, NULL);
+  size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, libraryPath);
+  wchar_t* newString = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
+  if (newString == NULL) {
+    (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return;
+  }
+  wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
+  checkOrtStatus(jniEnv, api, api->RegisterCustomOpsLibrary_V2((OrtSessionOptions*)optionsHandle, newString));
+  free(newString);
+  (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
+#else
   const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, libraryPath, NULL);
-
-  // Load the library
-  void* libraryHandle;
-  checkOrtStatus(jniEnv,api,api->RegisterCustomOpsLibrary((OrtSessionOptions*)optionsHandle,cPath,&libraryHandle));
-
-  // Release the string chars
-  (*jniEnv)->ReleaseStringUTFChars(jniEnv,libraryPath,cPath);
-
-  return (jlong) libraryHandle;
+  checkOrtStatus(jniEnv, api, api->RegisterCustomOpsLibrary_V2((OrtSessionOptions*)optionsHandle, cPath));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, libraryPath, cPath);
+#endif
 }
 
 /*
@@ -427,34 +434,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_regist
 
   // Release the string chars
   (*jniEnv)->ReleaseStringUTFChars(jniEnv,functionName,cFuncName);
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    closeCustomLibraries
- * Signature: ([J)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeCustomLibraries
-    (JNIEnv * jniEnv, jobject jobj, jlongArray libraryHandles) {
-  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
-
-  // Get the number of elements in the array
-  jsize numHandles = (*jniEnv)->GetArrayLength(jniEnv, libraryHandles);
-
-  // Get the elements of the libraryHandles array
-  jlong* handles = (*jniEnv)->GetLongArrayElements(jniEnv,libraryHandles,NULL);
-
-  // Iterate the handles, calling the appropriate close function
-  for (jint i = 0; i < numHandles; i++) {
-#ifdef _WIN32
-    FreeLibrary((void*)handles[i]);
-#else
-    dlclose((void*)handles[i]);
-#endif
-  }
-
-  // Release the long array
-  (*jniEnv)->ReleaseLongArrayElements(jniEnv,libraryHandles,handles,JNI_ABORT);
 }
 
 /*

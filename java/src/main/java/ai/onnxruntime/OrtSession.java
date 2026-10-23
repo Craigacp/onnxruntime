@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
  * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
@@ -882,8 +882,6 @@ public class OrtSession implements AutoCloseable {
 
     private final long nativeHandle;
 
-    private final List<Long> customLibraryHandles;
-
     private final Map<String, String> configEntries;
 
     private EpContextDataReadCallbackRegistration epContextDataReadCallbackRegistration;
@@ -894,7 +892,6 @@ public class OrtSession implements AutoCloseable {
     /** Create an empty session options. */
     public SessionOptions() {
       nativeHandle = createOptions(OnnxRuntime.ortApiHandle);
-      customLibraryHandles = new ArrayList<>();
       configEntries = new LinkedHashMap<String, String>();
     }
 
@@ -909,13 +906,6 @@ public class OrtSession implements AutoCloseable {
         if (activeSnapshots != 0) {
           throw new IllegalStateException(
               "Cannot close SessionOptions while a native operation is using a snapshot.");
-        }
-        if (!customLibraryHandles.isEmpty()) {
-          long[] longArray = new long[customLibraryHandles.size()];
-          for (int i = 0; i < customLibraryHandles.size(); i++) {
-            longArray[i] = customLibraryHandles.get(i);
-          }
-          closeCustomLibraries(longArray);
         }
         closeOptions(OnnxRuntime.ortApiHandle, nativeHandle);
         closed = true;
@@ -1172,14 +1162,16 @@ public class OrtSession implements AutoCloseable {
     /**
      * Registers a library of custom ops for use with {@link OrtSession}s using this SessionOptions.
      *
+     * <p>The library is unloaded once this SessionOptions and every {@link OrtSession} created from
+     * it have been closed.
+     *
      * @param path The path to the library on disk.
      * @throws OrtException If there was an error loading the library.
      */
     public void registerCustomOpLibrary(String path) throws OrtException {
       checkClosed();
       Objects.requireNonNull(path, "path must not be null");
-      long customHandle = registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
-      customLibraryHandles.add(customHandle);
+      registerCustomOpLibrary(OnnxRuntime.ortApiHandle, nativeHandle, path);
     }
 
     /**
@@ -1681,13 +1673,11 @@ public class OrtSession implements AutoCloseable {
     private native void setSessionLogVerbosityLevel(long apiHandle, long nativeHandle, int logLevel)
         throws OrtException;
 
-    private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
+    private native void registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
         throws OrtException;
 
     private native void registerCustomOpsUsingFunction(
         long apiHandle, long nativeHandle, String registrationFuncName) throws OrtException;
-
-    private native void closeCustomLibraries(long[] nativeHandle);
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 

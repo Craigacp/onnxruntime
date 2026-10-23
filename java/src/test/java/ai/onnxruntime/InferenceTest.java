@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -31,6 +31,7 @@ import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -1473,50 +1474,60 @@ public class InferenceTest {
   }
 
   @Test
-  public void testLoadCustomLibrary() throws OrtException {
+  public void testLoadCustomLibrary() throws OrtException, IOException {
     // This test is disabled on Android.
     if (!OnnxRuntime.isAndroid()) {
-      String customLibraryName = getCustomOpLibraryName();
+      // Register a private copy so a library loaded by another test (e.g. via System.load) can't
+      // keep it resident and hide an unload while the session is still using it.
+      Path customLibrary = Paths.get(getCustomOpLibraryName());
+      File libraryCopy =
+          File.createTempFile("custom_op_library", "-" + customLibrary.getFileName().toString());
+      libraryCopy.deleteOnExit();
+      Files.copy(customLibrary, libraryCopy.toPath(), StandardCopyOption.REPLACE_EXISTING);
+      String customLibraryName = libraryCopy.getAbsolutePath();
       String customOpLibraryTestModel =
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
+      OrtSession session;
       try (SessionOptions options = new SessionOptions()) {
         options.registerCustomOpLibrary(customLibraryName);
         if (OnnxRuntime.extractCUDA()) {
           options.addCUDA();
         }
-        try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
-          Map<String, OnnxTensor> container = new HashMap<>();
+        session = env.createSession(customOpLibraryTestModel, options);
+      }
+      // The session must keep the custom op library loaded after its options are closed.
+      try (OrtSession s = session) {
+        Map<String, OnnxTensor> container = new HashMap<>();
 
-          // prepare expected inputs and outputs
-          float[] flatInputOne =
-              new float[] {
-                1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 10.0f, 11.1f, 12.2f, 13.3f,
-                14.4f, 15.5f
-              };
-          Object tensorIn = OrtUtil.reshape(flatInputOne, new long[] {3, 5});
-          OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
-          container.put("input_1", ov);
+        // prepare expected inputs and outputs
+        float[] flatInputOne =
+            new float[] {
+              1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 10.0f, 11.1f, 12.2f, 13.3f,
+              14.4f, 15.5f
+            };
+        Object tensorIn = OrtUtil.reshape(flatInputOne, new long[] {3, 5});
+        OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
+        container.put("input_1", ov);
 
-          float[] flatInputTwo =
-              new float[] {
-                15.5f, 14.4f, 13.3f, 12.2f, 11.1f, 10.0f, 9.9f, 8.8f, 7.7f, 6.6f, 5.5f, 4.4f, 3.3f,
-                2.2f, 1.1f
-              };
-          tensorIn = OrtUtil.reshape(flatInputTwo, new long[] {3, 5});
-          ov = OnnxTensor.createTensor(env, tensorIn);
-          container.put("input_2", ov);
+        float[] flatInputTwo =
+            new float[] {
+              15.5f, 14.4f, 13.3f, 12.2f, 11.1f, 10.0f, 9.9f, 8.8f, 7.7f, 6.6f, 5.5f, 4.4f, 3.3f,
+              2.2f, 1.1f
+            };
+        tensorIn = OrtUtil.reshape(flatInputTwo, new long[] {3, 5});
+        ov = OnnxTensor.createTensor(env, tensorIn);
+        container.put("input_2", ov);
 
-          int[] flatOutput = new int[] {17, 17, 17, 17, 17, 17, 18, 18, 18, 17, 17, 17, 17, 17, 17};
+        int[] flatOutput = new int[] {17, 17, 17, 17, 17, 17, 18, 18, 18, 17, 17, 17, 17, 17, 17};
 
-          try (OrtSession.Result res = session.run(container)) {
-            OnnxTensor outputTensor = (OnnxTensor) res.get(0);
-            assertArrayEquals(new long[] {3, 5}, outputTensor.getInfo().shape);
-            int[] resultArray = TestHelpers.flattenInteger(res.get(0).getValue());
-            assertArrayEquals(flatOutput, resultArray);
-          }
-          OnnxValue.close(container);
+        try (OrtSession.Result res = s.run(container)) {
+          OnnxTensor outputTensor = (OnnxTensor) res.get(0);
+          assertArrayEquals(new long[] {3, 5}, outputTensor.getInfo().shape);
+          int[] resultArray = TestHelpers.flattenInteger(res.get(0).getValue());
+          assertArrayEquals(flatOutput, resultArray);
         }
+        OnnxValue.close(container);
       }
     }
   }
